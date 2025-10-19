@@ -4,23 +4,20 @@ import debounce from "lodash.debounce";
 
 const qs = new URLSearchParams(location.search);
 const canvasId  = qs.get("canvasId")  || "";
-const projectId = qs.get("projectId") || "";
+// accept either param name from Softr
+const projectId = qs.get("projectId") || qs.get("recordId") || "";
 
 // Build API base URL from env
-const RAW_HOST  = import.meta.env.VITE_API_HOST || "";
-const RAW_BASE  = import.meta.env.VITE_API_BASE_URL || "";
-const API_HOST  = RAW_BASE || RAW_HOST; // prefer explicit base, else host
-const API_BASE  = API_HOST
+const RAW_HOST = import.meta.env.VITE_API_HOST || "";
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL || "";
+const API_HOST = RAW_BASE || RAW_HOST; // prefer explicit base, else host
+const API_BASE = API_HOST
   ? (API_HOST.startsWith("http") ? API_HOST : `https://${API_HOST}`)
   : "";
 
 // Auth header (baked at build time)
 const API_SECRET = import.meta.env.VITE_API_SECRET_KEY || "";
-
-// Common headers (add Authorization when we have a secret)
-const authHeaders = API_SECRET
-  ? { Authorization: `Bearer ${API_SECRET}` }
-  : {};
+const authHeaders = API_SECRET ? { Authorization: `Bearer ${API_SECRET}` } : {};
 
 export default function App() {
   const ref = useRef(null);
@@ -30,7 +27,7 @@ export default function App() {
   // Load existing JSON
   useEffect(() => {
     (async () => {
-      if (!canvasId) return; // nothing to load yet
+      if (!canvasId) return;
       if (!API_BASE) { setError("Missing API base URL"); return; }
 
       try {
@@ -40,14 +37,16 @@ export default function App() {
         );
         if (!r.ok) throw new Error(`GET /canvas ${r.status}`);
         const json = await r.json();
+        // Excalidraw expects { elements, appState, files }
         setInitialData(json?.data || null);
       } catch (e) {
         console.error(e);
         setError("Failed to load canvas.");
       }
     })();
-  }, [canvasId, API_BASE]);
+  }, [canvasId, API_BASE, API_SECRET]);
 
+  // Debounced save
   const saveDebounced = useMemo(
     () =>
       debounce(async (payload) => {
@@ -59,16 +58,17 @@ export default function App() {
             body: JSON.stringify({ canvasId, projectId, data: payload }),
           });
         } catch (e) {
-          // swallow to avoid UI spam; logs are still useful
           console.error("Save failed:", e);
         }
-      }, 1200),
+      }, 1000),
     [API_BASE, canvasId, projectId, API_SECRET]
   );
 
+  // IMPORTANT: pass files through so images persist
   const handleChange = (elements, appState, files) => {
     if (!elements) return; // ignore initial mounts
-    saveDebounced({ elements, appState, files: {} });
+    const payload = { elements, appState, files: files || {} };
+    saveDebounced(payload);
   };
 
   // (optional) save a thumbnail every 15s
