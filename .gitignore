@@ -14,8 +14,8 @@ logs
 *.log
 
 # Vite/Build outputs
-app/web/dist/
-app/web/.vite/
+apps/web/dist/
+apps/web/.vite/
 
 # Env
 .env
