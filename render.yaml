@@ -11,7 +11,7 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
 
-  - type: static
+  - type: static_site
     name: draw-web
     rootDir: apps/web
     buildCommand: "npm install && npm run build"
