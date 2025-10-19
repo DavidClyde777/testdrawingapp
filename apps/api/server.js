@@ -6,18 +6,52 @@ const { v4: uuidv4 } = require("uuid");
 const app = express();
 app.use(express.json({ limit: "15mb" }));
 
-// CORS: restrict to your Softr + web app origins when you know them
-const allow = (origin, cb) => cb(null, true);
-app.use(cors({ origin: allow, credentials: false }));
+const allowed = new Set([
+  "https://draw-web.onrender.com",
+  "https://fa-internal-app.softr.app"
+]);
+app.use(
+  cors({
+    origin: (origin, cb) => cb(null, !origin || allowed.has(origin)),
+    credentials: false,
+  })
+);
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+// ---- 🔒 Simple Header Authentication Middleware ----
+app.use((req, res, next) => {
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : authHeader;
+
+  // allow unauthenticated health check (optional)
+  if (req.path === "/health") return next();
+
+  if (token !== process.env.API_SECRET_KEY) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+});
+
+// ----------------------------------------------------
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 // (helper) upsert
 async function upsertCanvas({ canvas_id, project_id, data }) {
   return supabase.from("canvases").upsert({
-    canvas_id, project_id, data, updated_at: new Date().toISOString()
+    canvas_id,
+    project_id,
+    data,
+    updated_at: new Date().toISOString(),
   });
 }
+
+// Health check (optional)
+app.get("/health", (req, res) => res.json({ ok: true }));
 
 // Create a new canvas id (so you can call this from Softr automation)
 app.post("/new-id", async (req, res) => {
@@ -50,7 +84,7 @@ app.put("/canvas", async (req, res) => {
   const { error } = await upsertCanvas({
     canvas_id: canvasId,
     project_id: projectId || null,
-    data: data || null
+    data: data || null,
   });
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
