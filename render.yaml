@@ -1,7 +1,7 @@
 services:
   - type: web
     name: draw-api
-    env: node
+    runtime: node
     rootDir: apps/api
     buildCommand: "npm install"
     startCommand: "npm start"
@@ -11,8 +11,9 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
 
-  - type: static
+  - type: web
     name: draw-web
+    runtime: static
     rootDir: apps/web
     buildCommand: "npm install && npm run build"
     staticPublishPath: "dist"
