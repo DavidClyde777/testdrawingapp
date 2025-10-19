@@ -2,48 +2,60 @@ import React, { useMemo, useRef, useState } from "react";
 import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
 import debounce from "lodash.debounce";
 
-// ---- Query params ----
 const qs = new URLSearchParams(location.search);
 const canvasId  = qs.get("canvasId")  || "";
 const projectId = qs.get("projectId") || qs.get("recordId") || "";
 
-// ---- API base ----
+// Configure on Render > draw-web
+// VITE_API_BASE_URL=https://draw-api-xxxxx.onrender.com
 const RAW_BASE = import.meta.env.VITE_API_BASE_URL || "";
 const API_BASE = RAW_BASE.startsWith("http") ? RAW_BASE : `https://${RAW_BASE}`;
+
+// -------- helpers --------
+const normalizeForExcalidraw = (rowData) => {
+  const data = rowData && typeof rowData === "object" ? rowData : {};
+  const elements = Array.isArray(data.elements) ? data.elements : [];
+  const files    = data.files || {};
+  const appState = { ...(data.appState || {}) };
+
+  // Always give Excalidraw a Map, never a plain object
+  appState.collaborators = new Map();
+
+  return { elements, appState, files };
+};
+
+const stripNonSerializable = (appState) => {
+  const { collaborators, ...rest } = appState || {};
+  // collaborators (Map) is non-serializable; exclude it from the payload
+  return rest;
+};
 
 export default function App() {
   const ref = useRef(null);
   const [error, setError] = useState("");
   const hasSavedNonEmpty = useRef(false);
 
-  // ------- Initial data as a Promise (Excalidraw waits for it) -------
+  // Excalidraw can accept a Promise for initialData; it waits for it
   const initialDataPromise = useMemo(() => {
     if (!canvasId || !API_BASE) {
       if (!API_BASE) setError("Missing API base URL");
-      return Promise.resolve({ elements: [], appState: {}, files: {} });
+      return Promise.resolve(normalizeForExcalidraw({}));
     }
     return (async () => {
       try {
-        const r = await fetch(
-          `${API_BASE}/canvas?canvasId=${encodeURIComponent(canvasId)}`
-        );
+        const r = await fetch(`${API_BASE}/canvas?canvasId=${encodeURIComponent(canvasId)}`);
         if (!r.ok) throw new Error(`GET /canvas ${r.status}`);
         const row = await r.json();
-        const data = (row && typeof row.data === "object") ? row.data : {};
-        return {
-          elements: Array.isArray(data.elements) ? data.elements : [],
-          appState: data.appState || {},
-          files: data.files || {},
-        };
+        // row is either { canvas_id, data, ... } or our fallback shape from the server
+        return normalizeForExcalidraw(row?.data);
       } catch (e) {
         console.error(e);
         setError("Failed to load canvas.");
-        return { elements: [], appState: {}, files: {} };
+        return normalizeForExcalidraw({});
       }
     })();
   }, [canvasId, API_BASE]);
 
-  // ------- Debounced save to API -------
   const saveDebounced = useMemo(
     () =>
       debounce(async (payload) => {
@@ -61,7 +73,7 @@ export default function App() {
     [API_BASE, canvasId, projectId]
   );
 
-  // ------- onChange: never overwrite with an empty scene -------
+  // Never overwrite with an empty scene; strip collaborators before save
   const handleChange = (elements, appState, files) => {
     const els = Array.isArray(elements) ? elements : [];
     const nonDeleted = els.filter((e) => !e?.isDeleted);
@@ -72,10 +84,11 @@ export default function App() {
     if (!hasContent && !hasSavedNonEmpty.current) return;
     if (hasContent) hasSavedNonEmpty.current = true;
 
-    saveDebounced({ elements: els, appState, files: fileMap });
+    const serializableAppState = stripNonSerializable(appState);
+    saveDebounced({ elements: els, appState: serializableAppState, files: fileMap });
   };
 
-  // optional: thumbnail export interval
+  // optional thumbnail heartbeat (no upload yet)
   useMemo(() => {
     const id = setInterval(async () => {
       try {
@@ -83,7 +96,7 @@ export default function App() {
         await exportToBlob({
           elements: ref.current.getSceneElements(),
           appState: ref.current.getAppState(),
-          files: ref.current.getFiles(),
+          files:    ref.current.getFiles(),
           mimeType: "image/png",
         });
       } catch {}
@@ -94,22 +107,11 @@ export default function App() {
   return (
     <div style={{ height: "100vh" }}>
       {error && (
-        <div
-          style={{
-            padding: 8,
-            background: "#fee",
-            color: "#900",
-            fontFamily: "Inter, system-ui, sans-serif",
-          }}
-        >
+        <div style={{ padding: 8, background: "#fee", color: "#900", fontFamily: "Inter, system-ui, sans-serif" }}>
           {error}
         </div>
       )}
-      <Excalidraw
-        ref={ref}
-        initialData={initialDataPromise}
-        onChange={handleChange}
-      />
+      <Excalidraw initialData={initialDataPromise} onChange={handleChange} ref={ref} />
     </div>
   );
 }
