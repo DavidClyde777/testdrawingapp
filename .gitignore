@@ -1,0 +1,31 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Node
+node_modules/
+npm-debug.log*
+.yarn/*
+.pnpm-store/
+
+# Logs
+logs
+*.log
+
+# Vite/Build outputs
+app/web/dist/
+app/web/.vite/
+
+# Env
+.env
+.env.local
+
+# Editor
+.vscode/
+.idea/
+
+# Misc
+*.local
+*.cache
+coverage/
