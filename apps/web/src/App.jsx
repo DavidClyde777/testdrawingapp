@@ -5,7 +5,10 @@ import debounce from "lodash.debounce";
 const qs = new URLSearchParams(location.search);
 const canvasId  = qs.get("canvasId")  || "";
 const projectId = qs.get("projectId") || "";
-const API_BASE  = import.meta.env.VITE_API_BASE_URL || ""; // Render injects this
+const API_HOST  = import.meta.env.VITE_API_HOST || import.meta.env.VITE_API_BASE_URL || ""; // host from Render
+const API_BASE  = API_HOST
+  ? (API_HOST.startsWith("http") ? API_HOST : `https://${API_HOST}`)
+  : "";
 
 export default function App() {
   const ref = useRef(null);
